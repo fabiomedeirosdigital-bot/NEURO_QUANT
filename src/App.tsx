@@ -47,6 +47,10 @@ export default function App() {
   const [triggerStatus, setTriggerStatus] = useState<'ANALYZING' | 'ZONE_REACHED' | 'CONFIRMED'>('ANALYZING');
   const [autoTrade, setAutoTrade] = useState(false);
   const [lastTradeId, setLastTradeId] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState({ email: '', password: '' });
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [showManualSync, setShowManualSync] = useState(false);
+  const [manualBalance, setManualBalance] = useState('');
 
   // Dynamic M15 Timer
   useEffect(() => {
@@ -134,7 +138,7 @@ export default function App() {
 
   const handleExecuteTrade = async () => {
     if (!isBrokerConnected) {
-      alert("Por favor, conecte-se à BinaryProp primeiro.");
+      alert("Por favor, conecte-se à Bullex primeiro.");
       return;
     }
     
@@ -379,31 +383,66 @@ export default function App() {
             </div>
             
             {!isBrokerConnected ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <p className="text-[10px] text-slate-400 leading-tight">
-                  Conecte sua conta da <span className="text-white font-bold">BinaryProp</span> para execução automática e sincronização de banca.
+                  Acesse sua conta <span className="text-white font-bold">Bullex</span> para operar em tempo real.
                 </p>
+                <div className="space-y-2">
+                  <input 
+                    type="email" 
+                    placeholder="E-mail"
+                    value={credentials.email}
+                    onChange={(e) => setCredentials(prev => ({ ...prev, email: e.target.value }))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500/50 transition-all"
+                  />
+                  <input 
+                    type="password" 
+                    placeholder="Senha"
+                    value={credentials.password}
+                    onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500/50 transition-all"
+                  />
+                </div>
                 <button 
                   onClick={async () => {
-                    const success = await brokerService.connect();
+                    if (!credentials.email || !credentials.password) {
+                      alert("Preencha todos os campos.");
+                      return;
+                    }
+                    setIsConnecting(true);
+                    const success = await brokerService.connect(credentials);
+                    setIsConnecting(false);
                     if (success) setIsBrokerConnected(true);
                   }}
-                  className="w-full py-2 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                  disabled={isConnecting}
+                  className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20"
                 >
-                  Conectar BinaryProp
-                  <ChevronRight size={12} />
+                  {isConnecting ? <RefreshCw size={14} className="animate-spin" /> : 'Entrar na Bullex'}
+                  {!isConnecting && <ChevronRight size={12} />}
                 </button>
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                    <ShieldCheck className="text-emerald-400" size={16} />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                      <ShieldCheck className="text-emerald-400" size={16} />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-white">API Bullex Ativa</span>
+                      <span className="text-[8px] text-emerald-400/70 uppercase font-bold">Sincronização em tempo real</span>
+                    </div>
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-white">API BinaryProp Ativa</span>
-                    <span className="text-[8px] text-emerald-400/70 uppercase font-bold">Sincronização em tempo real</span>
-                  </div>
+                  <button 
+                    onClick={async () => {
+                      await brokerService.disconnect();
+                      setIsBrokerConnected(false);
+                      setAutoTrade(false);
+                    }}
+                    className="text-[8px] uppercase font-bold text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    Sair
+                  </button>
                 </div>
 
                 <div className="flex items-center justify-between px-1">
@@ -420,6 +459,40 @@ export default function App() {
                       autoTrade ? "left-6" : "left-1"
                     )} />
                   </button>
+                </div>
+
+                <div className="pt-2 border-t border-white/5">
+                  <button 
+                    onClick={() => setShowManualSync(!showManualSync)}
+                    className="text-[8px] uppercase font-bold text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
+                  >
+                    {showManualSync ? 'Fechar Sincronização' : 'Sincronizar Banca Manual'}
+                  </button>
+                  
+                  {showManualSync && (
+                    <div className="mt-2 flex gap-2">
+                      <input 
+                        type="number" 
+                        placeholder="Valor Real R$"
+                        value={manualBalance}
+                        onChange={(e) => setManualBalance(e.target.value)}
+                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white outline-none"
+                      />
+                      <button 
+                        onClick={() => {
+                          const val = parseFloat(manualBalance);
+                          if (!isNaN(val)) {
+                            setCapital(val);
+                            setBrokerBalance(val);
+                            setShowManualSync(false);
+                          }
+                        }}
+                        className="bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-lg text-[8px] font-bold uppercase"
+                      >
+                        OK
+                      </button>
+                    </div>
+                  )}
                 </div>
                 
                 {lastTradeId && (
